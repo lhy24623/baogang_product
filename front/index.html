@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Doris数据库管理工具</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; min-height: 100vh; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        
+        header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px 0; border-radius: 10px; margin-bottom: 20px; text-align: center; }
+        header h1 { font-size: 28px; margin-bottom: 5px; }
+        .status-bar { display: flex; justify-content: center; gap: 20px; font-size: 14px; opacity: 0.9; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #ccc; }
+        .status-dot.connected { background: #4ade80; }
+        .status-dot.error { background: #f87171; }
+        
+        .panel { background: white; border-radius: 10px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .panel h2 { font-size: 18px; margin-bottom: 15px; color: #333; }
+        
+        .tabs { display: flex; gap: 10px; margin-bottom: 15px; }
+        .tab { padding: 10px 20px; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; background: #e5e7eb; color: #374151; }
+        .tab.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        
+        .form-group { margin-bottom: 12px; }
+        .form-group label { display: block; font-size: 13px; color: #666; margin-bottom: 4px; }
+        .form-group input, .form-group textarea, .form-group select { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+        .form-group input:focus, .form-group textarea:focus { outline: none; border-color: #667eea; }
+        .form-row { display: flex; gap: 12px; }
+        .form-row .form-group { flex: 1; }
+        
+        .btn-group { display: flex; gap: 10px; margin-top: 15px; }
+        .btn { padding: 10px 24px; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; }
+        .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .btn-primary:hover { box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); }
+        .btn-secondary { background: #e5e7eb; color: #374151; }
+        
+        .sql-preview { background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px; font-family: 'Monaco', monospace; font-size: 13px; margin-top: 10px; min-height: 36px; white-space: pre-wrap; }
+        
+        .table-container { overflow-x: auto; max-height: 500px; overflow-y: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
+        th { background: #f8fafc; font-weight: 600; color: #374151; position: sticky; top: 0; }
+        tr:hover { background: #f8fafc; }
+        
+        .message { padding: 15px; border-radius: 8px; margin-bottom: 15px; font-size: 14px; }
+        .message.error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+        .message.success { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+        
+        .loading { text-align: center; padding: 40px; color: #666; }
+        .spinner { width: 40px; height: 40px; border: 3px solid #e5e7eb; border-top-color: #667eea; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 15px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Doris数据库管理工具</h1>
+            <div class="status-bar">
+                <span class="status-dot" id="dbStatus"></span>
+                <span id="dbStatusText">检查中...</span>
+            </div>
+        </header>
+        
+        <div style="display:flex;gap:12px;margin-bottom:20px;">
+            <a href="/product" style="background:#667eea;color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:500;">产品档案</a>
+            <a href="/custom-product" style="background:#667eea;color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:500;">自定义新产品</a>
+            <a href="/production-sales" style="background:#52c41a;color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:500;">产销统计</a>
+        </div>
+        
+        <div class="panel">
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('select')">查询</button>
+                <button class="tab" onclick="switchTab('insert')">插入</button>
+                <button class="tab" onclick="switchTab('update')">更新</button>
+                <button class="tab" onclick="switchTab('delete')">删除</button>
+                <button class="tab" onclick="switchTab('sql')">原始SQL</button>
+            </div>
+            
+            <div id="formArea"></div>
+            
+            <div class="sql-preview" id="sqlPreview">-- 生成的SQL语句</div>
+            
+            <div class="btn-group">
+                <button class="btn btn-primary" onclick="execute()">执行</button>
+                <button class="btn btn-secondary" onclick="clearResult()">清除结果</button>
+            </div>
+        </div>
+        
+        <div class="panel">
+            <h2>执行结果</h2>
+            <div id="messageArea"></div>
+            <div id="resultArea">
+                <div class="message success">选择操作类型并填写参数</div>
+            </div>
+            <div style="margin-top:12px;text-align:right;">
+                <button class="btn btn-primary" style="padding:8px 20px;font-size:13px;" onclick="exportExcel()" id="exportBtn" disabled>导出Excel</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let currentTab = 'select';
+        let currentData = [];
+        
+        const forms = {
+            select: `
+                <div class="form-row">
+                    <div class="form-group"><label>表名 *</label><input id="table" placeholder="例: db1.table_a" oninput="preview()"></div>
+                    <div class="form-group"><label>列名（逗号分隔）</label><input id="columns" placeholder="默认 *" oninput="preview()"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>WHERE条件</label><input id="where" placeholder="例: id > 10" oninput="preview()"></div>
+                    <div class="form-group"><label>LIMIT</label><input id="limit" type="number" placeholder="例: 100" oninput="preview()"></div>
+                </div>`,
+            insert: `
+                <div class="form-group"><label>表名 *</label><input id="table" placeholder="例: db1.table_a" oninput="preview()"></div>
+                <div class="form-group"><label>数据（JSON格式） *</label><textarea id="data" rows="3" placeholder='{"col1": "val1", "col2": "val2"}' oninput="preview()"></textarea></div>`,
+            update: `
+                <div class="form-group"><label>表名 *</label><input id="table" placeholder="例: db1.table_a" oninput="preview()"></div>
+                <div class="form-group"><label>更新数据（JSON格式） *</label><textarea id="data" rows="3" placeholder='{"col1": "new_val"}' oninput="preview()"></textarea></div>
+                <div class="form-group"><label>WHERE条件 *</label><input id="where" placeholder="例: id = 1" oninput="preview()"></div>`,
+            delete: `
+                <div class="form-group"><label>表名 *</label><input id="table" placeholder="例: db1.table_a" oninput="preview()"></div>
+                <div class="form-group"><label>WHERE条件 *</label><input id="where" placeholder="例: id = 1" oninput="preview()"></div>`,
+            sql: `
+                <div class="form-group"><label>SQL语句 *</label><textarea id="sql" rows="4" placeholder="SHOW DATABASES" oninput="preview()"></textarea></div>`
+        };
+        
+        function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById('formArea').innerHTML = forms[tab];
+            document.getElementById('sqlPreview').textContent = '-- 生成的SQL语句';
+            clearResult();
+        }
+        
+        function preview() {
+            const sql = buildSql();
+            document.getElementById('sqlPreview').textContent = sql || '-- 生成的SQL语句';
+        }
+        
+        function buildSql() {
+            if (currentTab === 'sql') {
+                return (document.getElementById('sql')?.value || '').trim();
+            }
+            const table = document.getElementById('table')?.value?.trim() || '';
+            if (!table) return '';
+            
+            if (currentTab === 'select') {
+                const cols = document.getElementById('columns')?.value?.trim() || '*';
+                const where = document.getElementById('where')?.value?.trim();
+                const limit = document.getElementById('limit')?.value?.trim();
+                return `SELECT ${cols} FROM ${table}${where ? ' WHERE ' + where : ''}${limit ? ' LIMIT ' + limit : ''}`;
+            }
+            if (currentTab === 'insert') {
+                try {
+                    const data = JSON.parse(document.getElementById('data')?.value || '{}');
+                    const cols = Object.keys(data).join(', ');
+                    const vals = Object.values(data).map(v => v === null ? 'NULL' : `'${v}'`).join(', ');
+                    return `INSERT INTO ${table} (${cols}) VALUES (${vals})`;
+                } catch { return '-- JSON格式错误'; }
+            }
+            if (currentTab === 'update') {
+                try {
+                    const data = JSON.parse(document.getElementById('data')?.value || '{}');
+                    const set = Object.entries(data).map(([k, v]) => v === null ? `${k} = NULL` : `${k} = '${v}'`).join(', ');
+                    const where = document.getElementById('where')?.value?.trim();
+                    return `UPDATE ${table} SET ${set}${where ? ' WHERE ' + where : ''}`;
+                } catch { return '-- JSON格式错误'; }
+            }
+            if (currentTab === 'delete') {
+                const where = document.getElementById('where')?.value?.trim();
+                return `DELETE FROM ${table}${where ? ' WHERE ' + where : ''}`;
+            }
+        }
+        
+        function execute() {
+            if (currentTab === 'sql') {
+                const sql = document.getElementById('sql')?.value?.trim();
+                if (!sql) { showMsg('请输入SQL语句', 'error'); return; }
+                doPost('/api/sql', { sql });
+                return;
+            }
+            
+            const table = document.getElementById('table')?.value?.trim();
+            if (!table) { showMsg('请输入表名', 'error'); return; }
+            
+            if (currentTab === 'select') {
+                const body = { table };
+                const cols = document.getElementById('columns')?.value?.trim();
+                if (cols && cols !== '*') body.columns = cols.split(',').map(s => s.trim());
+                const where = document.getElementById('where')?.value?.trim();
+                if (where) body.where = where;
+                const limit = document.getElementById('limit')?.value?.trim();
+                if (limit) body.limit = parseInt(limit);
+                doPost('/api/select', body);
+            }
+            else if (currentTab === 'insert') {
+                try {
+                    const data = JSON.parse(document.getElementById('data')?.value || '{}');
+                    doPost('/api/insert', { table, data });
+                } catch { showMsg('JSON格式错误', 'error'); }
+            }
+            else if (currentTab === 'update') {
+                try {
+                    const data = JSON.parse(document.getElementById('data')?.value || '{}');
+                    const where = document.getElementById('where')?.value?.trim();
+                    if (!where) { showMsg('更新必须提供WHERE条件', 'error'); return; }
+                    doPost('/api/update', { table, data, where });
+                } catch { showMsg('JSON格式错误', 'error'); }
+            }
+            else if (currentTab === 'delete') {
+                const where = document.getElementById('where')?.value?.trim();
+                if (!where) { showMsg('删除必须提供WHERE条件', 'error'); return; }
+                doPost('/api/delete', { table, where });
+            }
+        }
+        
+        function doPost(url, body) {
+            document.getElementById('resultArea').innerHTML = '<div class="loading"><div class="spinner"></div>执行中...</div>';
+            clearMsg();
+            fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+                .then(r => r.json())
+                .then(res => {
+                    if (res.success) {
+                        if (res.data) {
+                            renderTable(res.data);
+                            showMsg(`查询成功，返回 ${res.data.length} 条记录`, 'success');
+                        } else {
+                            document.getElementById('resultArea').innerHTML = '';
+                            showMsg(`操作成功，影响 ${res.affected} 行`, 'success');
+                        }
+                    } else {
+                        document.getElementById('resultArea').innerHTML = '';
+                        showMsg('失败: ' + res.error, 'error');
+                    }
+                })
+                .catch(e => { document.getElementById('resultArea').innerHTML = ''; showMsg('请求失败: ' + e.message, 'error'); });
+        }
+        
+        function renderTable(data) {
+            currentData = data || [];
+            document.getElementById('exportBtn').disabled = !data || data.length === 0;
+            if (!data || !data.length) { document.getElementById('resultArea').innerHTML = '<div class="message success">查询成功，无数据</div>'; return; }
+            const cols = Object.keys(data[0]);
+            let html = '<div class="table-container"><table><thead><tr>';
+            cols.forEach(c => html += `<th>${esc(c)}</th>`);
+            html += '</tr></thead><tbody>';
+            data.forEach(row => { html += '<tr>'; cols.forEach(c => { const v = row[c]; html += `<td>${v === null ? '<span style="color:#999">NULL</span>' : esc(String(v))}</td>`; }); html += '</tr>'; });
+            html += '</tbody></table></div>';
+            document.getElementById('resultArea').innerHTML = html;
+        }
+        
+        function esc(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+        function showMsg(m, t) { document.getElementById('messageArea').innerHTML = `<div class="message ${t}">${m}</div>`; }
+        function clearMsg() { document.getElementById('messageArea').innerHTML = ''; }
+        function clearResult() { document.getElementById('resultArea').innerHTML = ''; clearMsg(); currentData = []; document.getElementById('exportBtn').disabled = true; }
+        
+        // 导出Excel
+        async function exportExcel() {
+            if (!currentData || currentData.length === 0) { showMsg('暂无数据可导出', 'error'); return; }
+            const cols = Object.keys(currentData[0]);
+            const rows = currentData.map(function(row) {
+                return cols.map(function(c) { return row[c] === null ? '' : row[c]; });
+            });
+            try {
+                const res = await fetch('/api/export/excel', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        fileName: '查询结果',
+                        sheets: [{ sheetName: '查询结果', columns: cols, data: rows }]
+                    })
+                });
+                if (!res.ok) { showMsg('导出失败', 'error'); return; }
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = '查询结果.xlsx';
+                document.body.appendChild(a); a.click();
+                document.body.removeChild(a); URL.revokeObjectURL(url);
+            } catch (e) { showMsg('导出失败: ' + e.message, 'error'); }
+        }
+        
+        // 初始化
+        switchTab('select');
+        fetch('/api/health').then(r => r.json()).then(d => { document.getElementById('dbStatus').className = d.status === 'healthy' ? 'status-dot connected' : 'status-dot error'; document.getElementById('dbStatusText').textContent = d.database === 'connected' ? '已连接' : '未连接'; }).catch(() => { document.getElementById('dbStatus').className = 'status-dot error'; document.getElementById('dbStatusText').textContent = '未连接'; });
+    </script>
+</body>
+</html>

@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>产销数据统计</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; min-height: 100vh; }
+        .header { background: #fff; padding: 16px 24px; border-bottom: 1px solid #e8e8e8; display: flex; align-items: center; justify-content: space-between; }
+        .header h1 { font-size: 20px; color: #333; }
+        .header a { color: #667eea; text-decoration: none; font-size: 14px; }
+        .container { max-width: 1400px; margin: 20px auto; padding: 0 20px; }
+        .card { background: #fff; border-radius: 8px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+        .card-title { font-size: 15px; font-weight: 600; color: #333; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; position: relative; }
+        .card-title::before { content: ''; width: 3px; height: 16px; background: #667eea; border-radius: 2px; }
+        .form-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 16px; }
+        .form-group { display: flex; flex-direction: column; gap: 4px; }
+        .form-group label { font-size: 12px; color: #666; font-weight: 500; }
+        .input-wrap { position: relative; }
+        .input-wrap select, .input-wrap input { width: 100%; padding: 7px 10px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 13px; }
+        .input-wrap select:focus, .input-wrap input:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 2px rgba(102,126,234,0.15); }
+        .input-wrap select { background: #fff; cursor: pointer; }
+        .combo { display: flex; gap: 0; }
+        .combo select { border-radius: 6px 0 0 6px; min-width: 0; flex: 1; }
+        .combo input { border-radius: 0 6px 6px 0; border-left: none; flex: 1; }
+        .combo select:focus { z-index: 1; }
+        .date-row { display: flex; gap: 8px; align-items: center; }
+        .date-row input { padding: 7px 10px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 13px; }
+        .date-row input:focus { outline: none; border-color: #667eea; }
+        .date-row span { color: #999; font-size: 13px; }
+        .virtual-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+        .virtual-row input { padding: 7px 10px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 13px; width: 240px; }
+        .virtual-row input:focus { outline: none; border-color: #667eea; }
+        .checkbox-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px 16px; }
+        .checkbox-item { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #555; cursor: pointer; }
+        .checkbox-item input[type="checkbox"] { accent-color: #667eea; cursor: pointer; }
+        .btn-row { display: flex; gap: 12px; margin-top: 20px; justify-content: center; }
+        .btn { padding: 10px 32px; border: none; border-radius: 6px; font-size: 15px; cursor: pointer; transition: all 0.2s; }
+        .btn-primary { background: #667eea; color: #fff; }
+        .btn-primary:hover { background: #5a6fd6; box-shadow: 0 4px 12px rgba(102,126,234,0.3); }
+        .btn-outline { background: #fff; color: #666; border: 1px solid #d9d9d9; }
+        .btn-outline:hover { color: #667eea; border-color: #667eea; }
+        .btn-sm { padding: 7px 16px; font-size: 13px; }
+        .message { padding: 12px 16px; border-radius: 6px; margin-bottom: 12px; font-size: 14px; display: none; }
+        .message.error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; display: block; }
+        .message.success { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; display: block; }
+        .table-wrap { overflow-x: auto; max-height: 600px; overflow-y: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        th { background: #fafafa; padding: 8px 10px; text-align: left; font-weight: 600; color: #333; border-bottom: 2px solid #e8e8e8; white-space: nowrap; position: sticky; top: 0; z-index: 1; }
+        td { padding: 8px 10px; border-bottom: 1px solid #f0f0f0; color: #555; white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
+        tr:hover td { background: #f5f7ff; }
+        .pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; font-size: 13px; color: #888; }
+        .page-btns { display: flex; gap: 6px; }
+        .page-btn { padding: 4px 10px; border: 1px solid #d9d9d9; border-radius: 4px; background: #fff; cursor: pointer; font-size: 12px; color: #555; }
+        .page-btn:hover { color: #667eea; border-color: #667eea; }
+        .page-btn.active { background: #667eea; color: #fff; border-color: #667eea; }
+        .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .loading { text-align: center; padding: 40px; color: #bbb; }
+        .sql-preview { background: #f8f9fa; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 11px; color: #666; margin-top: 8px; max-height: 120px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; display: none; }
+        .sql-toggle { font-size: 12px; color: #667eea; cursor: pointer; margin-top: 8px; }
+        .sql-toggle:hover { text-decoration: underline; }
+        /* 数据校验样式 */
+        .validate-section { margin-top: 24px; border-top: 2px solid #e8e8e8; padding-top: 24px; }
+        .upload-area { border: 2px dashed #d9d9d9; border-radius: 8px; padding: 24px; text-align: center; cursor: pointer; transition: all 0.2s; margin-bottom: 16px; }
+        .upload-area:hover { border-color: #667eea; background: #f5f7ff; }
+        .upload-area.dragover { border-color: #667eea; background: #eef0ff; }
+        .upload-area .upload-icon { font-size: 32px; color: #bbb; margin-bottom: 8px; }
+        .upload-area .upload-text { font-size: 13px; color: #999; }
+        .upload-area .upload-hint { font-size: 11px; color: #bbb; margin-top: 4px; }
+        .manual-table-wrap { overflow-x: auto; max-height: 400px; overflow-y: auto; margin-bottom: 12px; }
+        .manual-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .manual-table th { background: #f0f5ff; padding: 6px 8px; text-align: center; font-weight: 600; color: #333; border: 1px solid #d9d9d9; white-space: nowrap; position: sticky; top: 0; z-index: 1; }
+        .manual-table td { padding: 4px 6px; border: 1px solid #e8e8e8; text-align: center; }
+        .manual-table td input { width: 100%; border: none; text-align: center; font-size: 12px; padding: 2px; background: transparent; }
+        .manual-table td input:focus { outline: none; background: #fffbe6; }
+        .manual-table .row-actions { white-space: nowrap; }
+        .manual-table .row-actions button { padding: 2px 6px; font-size: 11px; border: none; border-radius: 3px; cursor: pointer; margin: 0 1px; }
+        .manual-table .del-btn { background: #fff1f0; color: #cf1322; }
+        .manual-table .del-btn:hover { background: #ffa39e; }
+        .validate-actions { display: flex; gap: 10px; align-items: center; margin: 12px 0; flex-wrap: wrap; }
+        .validate-result-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .validate-result-table th { background: #fafafa; padding: 6px 8px; text-align: center; font-weight: 600; color: #333; border-bottom: 2px solid #e8e8e8; white-space: nowrap; }
+        .validate-result-table td { padding: 6px 8px; border-bottom: 1px solid #f0f0f0; text-align: center; white-space: nowrap; }
+        .validate-result-table .match-row { background: #f6ffed; }
+        .validate-result-table .diff-row { background: #fff7e6; }
+        .validate-result-table .miss-row { background: #fff1f0; }
+        .validate-result-table .extra-row { background: #e6f7ff; }
+        .diff-value { color: #d4380d; font-weight: 600; }
+        .match-value { color: #389e0d; }
+        .miss-tag { background: #fff1f0; color: #cf1322; padding: 1px 6px; border-radius: 3px; font-size: 11px; }
+        .extra-tag { background: #e6f7ff; color: #096dd9; padding: 1px 6px; border-radius: 3px; font-size: 11px; }
+        .validate-summary { display: flex; gap: 16px; margin-bottom: 12px; font-size: 13px; flex-wrap: wrap; }
+        .validate-summary .stat-item { display: flex; align-items: center; gap: 4px; }
+        .validate-summary .stat-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .file-info { font-size: 12px; color: #666; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+        .file-info .file-name { color: #667eea; font-weight: 500; }
+        .file-info .clear-file { color: #cf1322; cursor: pointer; font-size: 11px; }
+        .file-info .clear-file:hover { text-decoration: underline; }
+        .threshold-input { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #666; }
+        .threshold-input input { width: 60px; padding: 4px 6px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 12px; text-align: center; }
+    </style>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+    <div class="header">
+        <h1>产销数据统计</h1>
+        <div style="display:flex;gap:12px;align-items:center;">
+            <a href="/" style="color:#667eea;text-decoration:none;font-size:14px;">主页</a>
+            <a href="/product" style="color:#667eea;text-decoration:none;font-size:14px;">产品档案</a>
+            <a href="/custom-product" style="color:#667eea;text-decoration:none;font-size:14px;">自定义产品</a>
+        </div>
+    </div>
+    <div class="container">
+        <!-- 虚拟产品导入 -->
+        <div class="card">
+            <div class="card-title">虚拟产品导入</div>
+            <div style="font-size:12px;color:#999;margin-bottom:8px;">输入虚拟产品psrno，自动填充筛选条件和分组维度</div>
+            <div class="virtual-row">
+                <input id="virtual_psrno" placeholder="输入虚拟产品psrno">
+                <button class="btn btn-primary btn-sm" onclick="loadVirtualProduct()">导入配置</button>
+                <button class="btn btn-outline btn-sm" onclick="clearVirtual()">清除</button>
+                <span id="virtual_status" style="font-size:12px;color:#999;"></span>
+            </div>
+        </div>
+        <!-- 筛选条件 -->
+        <div class="card">
+            <div class="card-title">筛选条件</div>
+            <div id="filterArea"><div class="loading">加载中...</div></div>
+        </div>
+        <!-- 分组聚合 -->
+        <div class="card">
+            <div class="card-title">分组聚合维度 <span style="font-size:11px;color:#999;font-weight:400;">（勾选的字段将用于GROUP BY和展示列）</span></div>
+            <div id="groupByArea" class="checkbox-grid"><div class="loading">加载中...</div></div>
+        </div>
+        <!-- 查询按钮 -->
+        <div class="btn-row">
+            <button class="btn btn-primary" onclick="executeQuery()">执行查询</button>
+            <button class="btn btn-outline" onclick="resetAll()">重置</button>
+        </div>
+        <div id="msgArea" class="message"></div>
+        <!-- 查询结果 -->
+        <div class="card">
+            <div class="card-title">查询结果</div>
+            <div style="display:flex;gap:8px;align-items:center;position:absolute;right:24px;top:18px;">
+                <button class="btn btn-outline btn-sm" onclick="exportQueryExcel()" id="exportQueryBtn" disabled>导出查询结果</button>
+                <button class="btn btn-outline btn-sm" onclick="exportValidateExcel()" id="exportValidateBtn" disabled>导出校验结果</button>
+            </div>
+            <div class="sql-toggle" onclick="toggleSql()">▶ 查看SQL</div>
+            <div id="sqlPreview" class="sql-preview"></div>
+            <div class="table-wrap" id="tableArea"><div class="loading">请配置筛选条件和分组维度后执行查询</div></div>
+            <div class="pagination">
+                <div id="pageInfo"></div>
+                <div class="page-btns" id="pageBtns"></div>
+            </div>
+        </div>
+
+        <!-- 数据校验 -->
+        <div class="card">
+            <div class="card-title">数据校验 <span style="font-size:11px;color:#999;font-weight:400;">（比对系统统计结果与人工报数，标记差异项）</span></div>
+            <div style="font-size:12px;color:#999;margin-bottom:12px;">请先执行查询获取系统统计数据，再通过上传文件或手动填写提供人工报数，点击"开始校验"进行比对。</div>
+            
+            <!-- 文件上传区 -->
+            <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+                <div class="upload-icon">📄</div>
+                <div class="upload-text">点击或拖拽上传 Excel / CSV 文件</div>
+                <div class="upload-hint">支持 .xlsx / .xls / .csv 格式，表头需与查询结果列名一致</div>
+            </div>
+            <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleFileUpload(event)">
+            <div id="fileInfo" class="file-info" style="display:none;"></div>
+
+            <!-- 可编辑空表 -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <div style="font-size:13px;font-weight:500;color:#333;">人工报数填写区</div>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <button class="btn btn-outline btn-sm" onclick="addManualRow()">+ 添加行</button>
+                    <button class="btn btn-outline btn-sm" onclick="clearManualTable()">清空表格</button>
+                </div>
+            </div>
+            <div class="manual-table-wrap">
+                <table class="manual-table" id="manualTable">
+                    <thead><tr><th colspan="1" style="color:#bbb;">请先执行查询以生成表头</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+
+            <!-- 校验操作区 -->
+            <div class="validate-actions">
+                <button class="btn btn-primary btn-sm" onclick="executeValidation()">🔍 开始校验</button>
+                <div class="threshold-input">
+                    <span>差异阈值:</span>
+                    <input type="number" id="diffThreshold" value="5" min="0" max="100" step="1">
+                    <span>%</span>
+                </div>
+                <span style="font-size:11px;color:#bbb;">差异率超过阈值的行将被标红</span>
+            </div>
+
+            <!-- 校验结果 -->
+            <div id="validateResult" style="display:none;">
+                <div class="validate-summary" id="validateSummary"></div>
+                <div class="table-wrap" style="max-height:500px;overflow:auto;">
+                    <table class="validate-result-table" id="validateResultTable"></table>
+                </div>
+            </div>
+        </div>
+    </div>
+<script>
+let currentPage = 1;
+const pageSize = 50;
+let totalRecords = 0;
+let dimensionConfig = [];
+let optionsData = {};
+let timeGranularityOptions = [];
+
+// 初始化
+async function init() {
+    try {
+        const res = await fetch('/api/production-sales/options');
+        const json = await res.json();
+        if (!json.success) { document.getElementById('filterArea').innerHTML = '<div style="color:#dc2626;">加载选项失败: ' + esc(json.error) + '</div>'; return; }
+        optionsData = json.options;
+        dimensionConfig = json.dimensions;
+        timeGranularityOptions = json.timeGranularity || [];
+        renderFilters();
+        renderGroupBy();
+    } catch (e) {
+        document.getElementById('filterArea').innerHTML = '<div style="color:#dc2626;">请求失败: ' + esc(e.message) + '</div>';
+    }
+}
+
+function renderFilters() {
+    let html = '<div class="form-grid">';
+    dimensionConfig.forEach(function(dim) {
+        const key = dim[0], label = dim[1], ftype = dim[2];
+        if (ftype === 'time_period') {
+            html += '<div class="form-group"><label>' + esc(label) + ' <span style="color:#dc2626">*</span></label>';
+            html += '<div class="date-row"><input type="date" id="f_dateStart" value="2026-01-01"> <span>至</span> <input type="date" id="f_dateEnd" value="2026-06-30">';
+            html += '<select id="timeGranularity" style="padding:7px 10px;border:1px solid #d9d9d9;border-radius:6px;font-size:13px;">';
+            (timeGranularityOptions || []).forEach(function(g) {
+                html += '<option value="' + esc(g.key) + '">' + esc(g.label) + '</option>';
+            });
+            html += '</select></div></div>';
+        } else if (ftype === 'fixed') {
+            html += '<div class="form-group"><label>' + esc(label) + '</label>';
+            html += '<div class="combo input-wrap"><select id="s_' + key + '"><option value="">-- 全部 --</option>';
+            (optionsData[key] || []).forEach(function(v) { html += '<option value="' + esc(String(v)) + '">' + esc(String(v)) + '</option>'; });
+            html += '</select><input id="f_' + key + '" placeholder="或自定义"></div></div>';
+        } else if (ftype === 'select') {
+            html += '<div class="form-group"><label>' + esc(label) + '</label>';
+            html += '<div class="combo input-wrap"><select id="s_' + key + '"><option value="">-- 全部 --</option>';
+            (optionsData[key] || []).forEach(function(v) { html += '<option value="' + esc(String(v)) + '">' + esc(String(v)) + '</option>'; });
+            html += '</select><input id="f_' + key + '" placeholder="或自定义"></div></div>';
+        } else {
+            html += '<div class="form-group"><label>' + esc(label) + '</label>';
+            html += '<div class="input-wrap"><input id="f_' + key + '" placeholder="模糊匹配"></div></div>';
+        }
+    });
+    html += '</div>';
+    document.getElementById('filterArea').innerHTML = html;
+    // 绑定下拉联动
+    dimensionConfig.forEach(function(dim) {
+        const key = dim[0], ftype = dim[2];
+        if (ftype === 'select' || ftype === 'fixed') {
+            var sel = document.getElementById('s_' + key);
+            if (sel) sel.addEventListener('change', function() { document.getElementById('f_' + key).value = this.value; });
+        }
+    });
+}
+
+function renderGroupBy() {
+    let html = '';
+    dimensionConfig.forEach(function(dim) {
+        const key = dim[0], label = dim[1];
+        html += '<label class="checkbox-item"><input type="checkbox" id="gb_' + key + '" value="' + key + '"> ' + esc(label) + '</label>';
+    });
+    document.getElementById('groupByArea').innerHTML = html;
+}
+
+// 虚拟产品导入
+async function loadVirtualProduct() {
+    const psrno = document.getElementById('virtual_psrno').value.trim();
+    if (!psrno) { showMsg('请输入虚拟产品psrno', 'error'); return; }
+    document.getElementById('virtual_status').textContent = '加载中...';
+    try {
+        const res = await fetch('/api/custom-product/virtual?psrno=' + encodeURIComponent(psrno));
+        const json = await res.json();
+        if (!json.success) { document.getElementById('virtual_status').textContent = ''; showMsg('导入失败: ' + json.error, 'error'); return; }
+        // 填充筛选条件
+        const filters = json.filters || {};
+        Object.keys(filters).forEach(function(key) {
+            const input = document.getElementById('f_' + key);
+            if (input) input.value = filters[key];
+        });
+        // 勾选分组维度
+        const groupBy = json.groupBy || [];
+        groupBy.forEach(function(key) {
+            const cb = document.getElementById('gb_' + key);
+            if (cb) cb.checked = true;
+        });
+        document.getElementById('virtual_status').textContent = '✅ 已导入: ' + psrno;
+        document.getElementById('virtual_status').style.color = '#16a34a';
+        showMsg('虚拟产品配置已导入', 'success');
+    } catch (e) {
+        document.getElementById('virtual_status').textContent = '';
+        showMsg('请求失败: ' + e.message, 'error');
+    }
+}
+
+function clearVirtual() {
+    document.getElementById('virtual_psrno').value = '';
+    document.getElementById('virtual_status').textContent = '';
+    resetAll();
+}
+
+// 执行查询
+async function executeQuery(page) {
+    currentPage = page || 1;
+    const filters = collectFilters();
+    const groupBy = collectGroupBy();
+    const dateStart = document.getElementById('f_dateStart').value;
+    const dateEnd = document.getElementById('f_dateEnd').value;
+    const granularityEl = document.getElementById('timeGranularity');
+    const timeGranularity = granularityEl ? granularityEl.value : 'month';
+    if (!dateStart || !dateEnd) { showMsg('请选择日期范围', 'error'); return; }
+    if (groupBy.length === 0) { showMsg('请至少选择一个分组维度', 'error'); return; }
+
+    document.getElementById('tableArea').innerHTML = '<div class="loading">查询中...</div>';
+    try {
+        const res = await fetch('/api/production-sales/query', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filters: filters, groupBy: groupBy, timeGranularity: timeGranularity, dateStart: dateStart, dateEnd: dateEnd, page: currentPage, pageSize: pageSize })
+        });
+        const json = await res.json();
+        if (json.success) {
+            totalRecords = json.total;
+            // 先更新列分类信息（确保维度列在前），再渲染表格
+            updateValidationData(json.data, json.dimensionLabels, json.metricLabels);
+            renderResultTable(json.data);
+            renderPagination();
+            document.getElementById('sqlPreview').textContent = json.sql || '';
+            showMsg('查询成功，共 ' + totalRecords + ' 条记录', 'success');
+        } else {
+            document.getElementById('tableArea').innerHTML = '<div style="text-align:center;padding:40px;color:#dc2626;">查询失败: ' + esc(json.error) + '</div>';
+            if (json.sql) document.getElementById('sqlPreview').textContent = json.sql;
+        }
+    } catch (e) {
+        document.getElementById('tableArea').innerHTML = '<div style="text-align:center;padding:40px;color:#dc2626;">请求失败: ' + esc(e.message) + '</div>';
+    }
+}
+
+function collectFilters() {
+    const filters = {};
+    dimensionConfig.forEach(function(dim) {
+        const key = dim[0], ftype = dim[2];
+        if (ftype === 'time_period' || ftype === 'date_range') return;
+        const input = document.getElementById('f_' + key);
+        if (input && input.value.trim()) filters[key] = input.value.trim();
+    });
+    return filters;
+}
+
+function collectGroupBy() {
+    const result = [];
+    dimensionConfig.forEach(function(dim) {
+        const cb = document.getElementById('gb_' + dim[0]);
+        if (cb && cb.checked) result.push(dim[0]);
+    });
+    return result;
+}
+
+function renderResultTable(data) {
+    if (!data || !data.length) {
+        document.getElementById('tableArea').innerHTML = '<div class="loading">无匹配数据</div>';
+        document.getElementById('pageInfo').textContent = '';
+        document.getElementById('pageBtns').innerHTML = '';
+        document.getElementById('exportQueryBtn').disabled = true;
+        return;
+    }
+    // 启用导出按钮
+    document.getElementById('exportQueryBtn').disabled = false;
+    // 使用 lastQueryColumns（已按维度在前、指标在后排列）而非 Object.keys(data[0])
+    const cols = lastQueryColumns.length > 0 ? lastQueryColumns : Object.keys(data[0]);
+    let html = '<table><thead><tr>';
+    cols.forEach(function(c) { html += '<th>' + esc(c) + '</th>'; });
+    html += '</tr></thead><tbody>';
+    data.forEach(function(row) {
+        html += '<tr>';
+        cols.forEach(function(c) {
+            const v = row[c];
+            const display = v === null ? '<span style="color:#bbb">NULL</span>' : (typeof v === 'number' ? v.toLocaleString() : esc(String(v)));
+            html += '<td title="' + esc(String(v === null ? 'NULL' : v)) + '">' + display + '</td>';
+        });
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    document.getElementById('tableArea').innerHTML = html;
+}
+
+// 更新数据校验所需的查询结果信息（使用后端返回的列分类，确保维度列在前）
+function updateValidationData(data, dimLabels, metLabels) {
+    lastQueryData = data || [];
+    if (lastQueryData.length > 0) {
+        // 使用后端返回的维度列名和指标列名（准确可靠）
+        dimensionColumns = dimLabels || [];
+        metricColumns = metLabels || [];
+        // 重排列顺序：维度列在前，指标列在后
+        lastQueryColumns = dimensionColumns.concat(metricColumns);
+    } else {
+        lastQueryColumns = [];
+        dimensionColumns = [];
+        metricColumns = [];
+    }
+    // 重新渲染人工报数表头
+    renderManualTable();
+}
+
+function renderPagination() {
+    const tp = Math.ceil(totalRecords / pageSize) || 1;
+    document.getElementById('pageInfo').textContent = '第 ' + currentPage + '/' + tp + ' 页，共 ' + totalRecords + ' 条';
+    let html = '<button class="page-btn"' + (currentPage<=1?' disabled':'') + ' onclick="executeQuery('+(currentPage-1)+')">上一页</button>';
+    for (let i = Math.max(1,currentPage-2); i <= Math.min(tp,currentPage+2); i++) {
+        html += '<button class="page-btn'+(i===currentPage?' active':'')+'" onclick="executeQuery('+i+')">'+i+'</button>';
+    }
+    html += '<button class="page-btn"' + (currentPage>=tp?' disabled':'') + ' onclick="executeQuery('+(currentPage+1)+')">下一页</button>';
+    document.getElementById('pageBtns').innerHTML = html;
+}
+
+function resetAll() {
+    dimensionConfig.forEach(function(dim) {
+        const key = dim[0], ftype = dim[2];
+        if (ftype === 'time_period' || ftype === 'date_range') return;
+        const input = document.getElementById('f_' + key);
+        if (input) input.value = '';
+        const sel = document.getElementById('s_' + key);
+        if (sel) sel.value = '';
+        const cb = document.getElementById('gb_' + key);
+        if (cb) cb.checked = false;
+    });
+    const granularityEl = document.getElementById('timeGranularity');
+    if (granularityEl) granularityEl.value = 'month';
+    document.getElementById('msgArea').style.display = 'none';
+    document.getElementById('tableArea').innerHTML = '<div class="loading">请配置筛选条件和分组维度后执行查询</div>';
+    document.getElementById('pageInfo').textContent = '';
+    document.getElementById('pageBtns').innerHTML = '';
+    document.getElementById('sqlPreview').textContent = '';
+}
+
+function showMsg(text, type) {
+    const el = document.getElementById('msgArea');
+    el.textContent = text;
+    el.className = 'message ' + type;
+    el.style.display = 'block';
+    if (type === 'success') setTimeout(function() { el.style.display = 'none'; }, 3000);
+}
+
+function toggleSql() {
+    const el = document.getElementById('sqlPreview');
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function esc(t) { var d = document.createElement('div'); d.textContent = String(t); return d.innerHTML; }
+
+// ==================== 导出Excel功能 ====================
+
+// 保存校验结果数据，用于导出
+let lastValidateDetails = [];
+let lastValidateSummary = null;
+let lastMatchDims = [];
+
+// 导出查询结果Excel（全量数据）
+async function exportQueryExcel() {
+    if (totalRecords === 0) { alert('暂无查询结果可导出'); return; }
+    var btn = document.getElementById('exportQueryBtn');
+    btn.disabled = true; btn.textContent = '导出中...';
+    try {
+        // 重新请求全量数据
+        const filters = collectFilters();
+        const groupBy = collectGroupBy();
+        const dateStart = document.getElementById('f_dateStart').value;
+        const dateEnd = document.getElementById('f_dateEnd').value;
+        const granularityEl = document.getElementById('timeGranularity');
+        const timeGranularity = granularityEl ? granularityEl.value : 'month';
+        if (!dateStart || !dateEnd || groupBy.length === 0) { alert('请先执行查询'); return; }
+        const res = await fetch('/api/production-sales/query', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filters: filters, groupBy: groupBy, timeGranularity: timeGranularity, dateStart: dateStart, dateEnd: dateEnd, page: 1, pageSize: 999999 })
+        });
+        const json = await res.json();
+        if (!json.success || !json.data || json.data.length === 0) { alert('获取全量数据失败'); return; }
+        const allData = json.data;
+        // 使用后端返回的列分类确保维度在前
+        const dimLabels = json.dimensionLabels || [];
+        const metLabels = json.metricLabels || [];
+        const cols = dimLabels.concat(metLabels).length > 0 ? dimLabels.concat(metLabels) : Object.keys(allData[0]);
+        const rows = allData.map(function(row) {
+            return cols.map(function(c) { return row[c] === null ? '' : row[c]; });
+        });
+        const exportRes = await fetch('/api/export/excel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                fileName: '产销统计查询结果',
+                sheets: [{ sheetName: '查询结果', columns: cols, data: rows }]
+            })
+        });
+        if (!exportRes.ok) { alert('导出失败'); return; }
+        const blob = await exportRes.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = '产销统计查询结果.xlsx';
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a); URL.revokeObjectURL(url);
+    } catch (e) { alert('导出失败: ' + e.message); }
+    finally { btn.disabled = false; btn.textContent = '导出查询结果'; }
+}
+
+// 导出校验结果Excel
+async function exportValidateExcel() {
+    if (!lastValidateDetails || lastValidateDetails.length === 0) { alert('暂无校验结果可导出'); return; }
+    // 构建校验结果数据：包含汇总信息sheet和详情sheet
+    var sheets = [];
+
+    // Sheet1: 校验汇总
+    if (lastValidateSummary) {
+        var summaryCols = ['指标', '值'];
+        var summaryRows = [
+            ['系统数据条数', lastValidateSummary.totalSystem],
+            ['人工报数条数', lastValidateSummary.totalManual],
+            ['总条数是否一致', lastValidateSummary.rowCountMatch ? '是' : '否'],
+            ['维度匹配条数', lastValidateSummary.matchedCombos],
+            ['人工多报条数', lastValidateSummary.extraCombos],
+            ['人工漏报条数', lastValidateSummary.missCombos],
+        ];
+        if (lastValidateSummary.missingInManual && lastValidateSummary.missingInManual.length > 0) {
+            summaryRows.push(['人工遗漏字段', lastValidateSummary.missingInManual.join(', ')]);
+        }
+        if (lastValidateSummary.extraInManual && lastValidateSummary.extraInManual.length > 0) {
+            summaryRows.push(['人工多报字段', lastValidateSummary.extraInManual.join(', ')]);
+        }
+        sheets.push({ sheetName: '校验汇总', columns: summaryCols, data: summaryRows });
+    }
+
+    // Sheet2: 字段级详情
+    var allFieldNames = new Set();
+    lastValidateDetails.forEach(function(d) {
+        Object.keys(d.fieldChecks || {}).forEach(function(k) { allFieldNames.add(k); });
+    });
+    var fieldList = Array.from(allFieldNames);
+    var dimCols = lastMatchDims.filter(function(d) { return fieldList.includes(d); });
+    var otherCols = fieldList.filter(function(f) { return !lastMatchDims.includes(f); });
+    var orderedCols = dimCols.concat(otherCols);
+
+    var detailCols = ['状态'].concat(orderedCols);
+    var detailRows = [];
+    lastValidateDetails.forEach(function(d) {
+        var row = [];
+        if (d.rowStatus === 'matched') { row.push('匹配'); }
+        else if (d.rowStatus === 'extra') { row.push('多报'); }
+        else { row.push('漏报'); }
+        orderedCols.forEach(function(col) {
+            var fc = (d.fieldChecks || {})[col];
+            if (!fc) { row.push('-'); return; }
+            if (fc.status === 'missing_in_manual') {
+                row.push('[缺] ' + String(fc.systemVal !== null && fc.systemVal !== undefined ? fc.systemVal : ''));
+            } else if (fc.status === 'extra_in_manual') {
+                row.push('[多] ' + String(fc.manualVal !== null && fc.manualVal !== undefined ? fc.manualVal : ''));
+            } else if (fc.status === 'diff') {
+                var sign = fc.diff > 0 ? '+' : '';
+                row.push(String(fc.manualVal) + ' (差' + sign + fc.diff + ', ' + sign + fc.diffRate + '%)');
+            } else {
+                var val = fc.manualVal !== undefined ? fc.manualVal : (fc.systemVal !== undefined ? fc.systemVal : '');
+                row.push(val);
+            }
+        });
+        detailRows.push(row);
+    });
+    sheets.push({ sheetName: '字段级详情', columns: detailCols, data: detailRows });
+
+    try {
+        const res = await fetch('/api/export/excel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileName: '产销数据校验结果', sheets: sheets })
+        });
+        if (!res.ok) { alert('导出失败'); return; }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = '产销数据校验结果.xlsx';
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a); URL.revokeObjectURL(url);
+    } catch (e) { alert('导出失败: ' + e.message); }
+}
+
+// ==================== 数据校验功能 ====================
+
+// 保存最后一次查询结果，用于比对
+let lastQueryData = [];
+let lastQueryColumns = [];  // 所有列名
+let dimensionColumns = [];  // 维度列名（用于匹配行）
+let metricColumns = [];     // 指标列名（用于数值比对）
+let manualRows = [];        // 人工报数数据 [{col1: val1, col2: val2, ...}, ...]
+
+// 拖拽上传支持
+const uploadArea = document.getElementById('uploadArea');
+uploadArea.addEventListener('dragover', function(e) { e.preventDefault(); this.classList.add('dragover'); });
+uploadArea.addEventListener('dragleave', function(e) { this.classList.remove('dragover'); });
+uploadArea.addEventListener('drop', function(e) {
+    e.preventDefault();
+    this.classList.remove('dragover');
+    const files = e.dataTransfer.files;
+    if (files.length > 0) parseUploadedFile(files[0]);
+});
+
+// 文件上传处理
+function handleFileUpload(event) {
+    const file = event.target.files[0];
+    if (file) parseUploadedFile(file);
+}
+
+function parseUploadedFile(file) {
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!['xlsx', 'xls', 'csv'].includes(ext)) {
+        showMsg('仅支持 .xlsx / .xls / .csv 格式文件', 'error');
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheetName = workbook.SheetNames[0];
+            const sheet = workbook.Sheets[sheetName];
+            const jsonData = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+            
+            if (jsonData.length === 0) {
+                showMsg('文件内容为空', 'error');
+                return;
+            }
+
+            // 显示文件信息
+            const fileInfoEl = document.getElementById('fileInfo');
+            fileInfoEl.style.display = 'flex';
+            fileInfoEl.innerHTML = '<span>已上传: </span><span class="file-name">' + esc(file.name) + '</span>' +
+                '<span style="color:#999;">(' + jsonData.length + '行数据)</span>' +
+                '<span class="clear-file" onclick="clearUploadedFile()">✕ 清除</span>';
+
+            // 确保表头已生成
+            ensureManualTableHeaders();
+            
+            // 将文件数据填入人工报数表
+            const fileCols = Object.keys(jsonData[0]);
+            manualRows = [];
+            jsonData.forEach(function(row) {
+                const newRow = {};
+                lastQueryColumns.forEach(function(col) {
+                    // 尝试精确匹配列名，也尝试模糊匹配
+                    let val = row[col];
+                    if (val === undefined) {
+                        // 尝试忽略大小写、去空格匹配
+                        const matchCol = fileCols.find(function(fc) {
+                            return fc.replace(/\s+/g, '').toLowerCase() === col.replace(/\s+/g, '').toLowerCase();
+                        });
+                        if (matchCol) val = row[matchCol];
+                    }
+                    newRow[col] = val !== undefined ? String(val) : '';
+                });
+                manualRows.push(newRow);
+            });
+            renderManualTable();
+            // 检查列名与查询结果是否匹配
+            checkColumnMatch(fileCols);
+            showMsg('文件解析成功，已导入 ' + jsonData.length + ' 行数据', 'success');
+        } catch (err) {
+            showMsg('文件解析失败: ' + err.message, 'error');
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+function clearUploadedFile() {
+    document.getElementById('fileInput').value = '';
+    document.getElementById('fileInfo').style.display = 'none';
+}
+
+// 检查上传文件的列名与查询结果是否匹配（警告提示，不阻断）
+function checkColumnMatch(fileCols) {
+    if (lastQueryColumns.length === 0) return;
+    const fileKeys = fileCols.map(function(c) { return c.replace(/\s+/g, '').toLowerCase(); });
+    const missing = [];
+    lastQueryColumns.forEach(function(col) {
+        const normalized = col.replace(/\s+/g, '').toLowerCase();
+        if (!fileKeys.includes(normalized)) {
+            missing.push(col);
+        }
+    });
+    if (missing.length > 0) {
+        const missingDims = missing.filter(function(c) { return dimensionColumns.includes(c); });
+        const missingMetrics = missing.filter(function(c) { return metricColumns.includes(c); });
+        const matchedDims = dimensionColumns.filter(function(c) { return fileKeys.includes(c.replace(/\s+/g, '').toLowerCase()); });
+        let warn = '文件缺少列: ' + missing.join('、');
+        if (missingDims.length > 0 && missingDims.length < dimensionColumns.length) {
+            warn += '。维度列 ' + missingDims.join('、') + ' 缺失，将按共有维度 [' + matchedDims.join('、') + '] 匹配';
+        } else if (missingDims.length === dimensionColumns.length) {
+            warn += '。所有维度列均缺失，无法匹配行，校验将报错';
+        }
+        if (missingMetrics.length > 0) {
+            warn += '。指标列 ' + missingMetrics.join('、') + ' 缺失将跳过比对';
+        }
+        showMsg(warn, 'error');
+    }
+}
+
+// 确保人工报数表表头已生成
+function ensureManualTableHeaders() {
+    if (lastQueryColumns.length === 0) {
+        showMsg('请先执行查询，系统将根据查询结果生成表头', 'error');
+        return false;
+    }
+    return true;
+}
+
+// 渲染人工报数表
+function renderManualTable() {
+    if (lastQueryColumns.length === 0) {
+        document.getElementById('manualTable').innerHTML = '<thead><tr><th colspan="1" style="color:#bbb;">请先执行查询以生成表头</th></tr></thead><tbody></tbody>';
+        return;
+    }
+    
+    let html = '<thead><tr>';
+    html += '<th style="width:36px;">#</th>';
+    lastQueryColumns.forEach(function(col) {
+        const isMetric = metricColumns.includes(col);
+        html += '<th>' + esc(col) + (isMetric ? ' <span style="color:#667eea;font-size:10px;">(数值)</span>' : '') + '</th>';
+    });
+    html += '<th style="width:50px;">操作</th>';
+    html += '</tr></thead><tbody>';
+    
+    if (manualRows.length === 0) {
+        html += '<tr><td colspan="' + (lastQueryColumns.length + 2) + '" style="color:#bbb;padding:20px;">暂无数据，请上传文件或点击"添加行"手动填写</td></tr>';
+    } else {
+        manualRows.forEach(function(row, idx) {
+            html += '<tr>';
+            html += '<td style="color:#999;font-size:11px;">' + (idx + 1) + '</td>';
+            lastQueryColumns.forEach(function(col) {
+                const isMetric = metricColumns.includes(col);
+                html += '<td><input type="' + (isMetric ? 'number' : 'text') + '" value="' + esc(row[col] || '') + '" data-row="' + idx + '" data-col="' + esc(col) + '" onchange="updateManualCell(this)"></td>';
+            });
+            html += '<td class="row-actions"><button class="del-btn" onclick="deleteManualRow(' + idx + ')">删除</button></td>';
+            html += '</tr>';
+        });
+    }
+    html += '</tbody>';
+    document.getElementById('manualTable').innerHTML = html;
+}
+
+function updateManualCell(el) {
+    const rowIdx = parseInt(el.dataset.row);
+    const col = el.dataset.col;
+    manualRows[rowIdx][col] = el.value;
+}
+
+function addManualRow() {
+    if (!ensureManualTableHeaders()) return;
+    const newRow = {};
+    lastQueryColumns.forEach(function(col) { newRow[col] = ''; });
+    manualRows.push(newRow);
+    renderManualTable();
+}
+
+function deleteManualRow(idx) {
+    manualRows.splice(idx, 1);
+    renderManualTable();
+}
+
+function clearManualTable() {
+    manualRows = [];
+    clearUploadedFile();
+    renderManualTable();
+    document.getElementById('validateResult').style.display = 'none';
+}
+
+// 执行校验 —— 将系统查询结果和人工报数传给后端比对
+async function executeValidation() {
+    if (lastQueryData.length === 0) {
+        showMsg('请先执行查询获取系统统计数据', 'error');
+        return;
+    }
+    if (manualRows.length === 0) {
+        showMsg('请上传文件或手动填写人工报数数据', 'error');
+        return;
+    }
+
+    const groupBy = collectGroupBy();
+    const granularityEl = document.getElementById('timeGranularity');
+    const timeGranularity = granularityEl ? granularityEl.value : 'month';
+    const threshold = parseFloat(document.getElementById('diffThreshold').value) || 5;
+
+    if (groupBy.length === 0) {
+        showMsg('请至少选择一个分组维度', 'error');
+        return;
+    }
+
+    // 显示加载状态
+    document.getElementById('validateResult').style.display = 'block';
+    document.getElementById('validateSummary').innerHTML = '<div style="color:#999;">校验中...</div>';
+    document.getElementById('validateResultTable').innerHTML = '';
+
+    try {
+        const res = await fetch('/api/production-sales/validate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                systemData: lastQueryData,
+                manualData: manualRows,
+                groupBy: groupBy,
+                timeGranularity: timeGranularity,
+                threshold: threshold
+            })
+        });
+        const json = await res.json();
+        if (!json.success) {
+            document.getElementById('validateResult').style.display = 'none';
+            showMsg('校验失败: ' + json.error, 'error');
+            return;
+        }
+
+        // 更新维度列缓存
+        dimensionColumns = json.dimensionColumns || [];
+        const matchDims = json.matchDimensions || dimensionColumns;
+
+        // 渲染结果
+        renderValidateResult(json.details, json.summary, threshold, matchDims);
+        showMsg('校验完成', 'success');
+    } catch (e) {
+        document.getElementById('validateResult').style.display = 'none';
+        showMsg('校验请求失败: ' + e.message, 'error');
+    }
+}
+
+function renderValidateResult(details, summary, threshold, matchDims) {
+    const summaryEl = document.getElementById('validateSummary');
+    // 保存校验结果数据用于导出
+    lastValidateDetails = details || [];
+    lastValidateSummary = summary || null;
+    lastMatchDims = matchDims || [];
+    document.getElementById('exportValidateBtn').disabled = !details || details.length === 0;
+
+    // ---- 第一层：总条数校验 ----
+    const rowCountIcon = summary.rowCountMatch ? '✓' : '✗';
+    const rowCountColor = summary.rowCountMatch ? '#52c41a' : '#cf1322';
+    let html = '<div style="margin-bottom:12px;padding:10px 14px;background:#fafafa;border-radius:6px;border:1px solid #e8e8e8;">';
+    html += '<div style="font-weight:600;margin-bottom:6px;">一、总条数校验</div>';
+    html += '<div style="font-size:13px;"><span style="color:' + rowCountColor + ';font-weight:600;">' + rowCountIcon + '</span> 系统数据 <b>' + summary.totalSystem + '</b> 条 / 人工报数 <b>' + summary.totalManual + '</b> 条';
+    if (!summary.rowCountMatch) {
+        html += ' <span style="color:#cf1322;">（不一致，差 ' + Math.abs(summary.totalSystem - summary.totalManual) + ' 条）</span>';
+    } else {
+        html += ' <span style="color:#52c41a;">（一致）</span>';
+    }
+    html += '</div></div>';
+
+    // ---- 第二层：维度组合校验 ----
+    html += '<div style="margin-bottom:12px;padding:10px 14px;background:#fafafa;border-radius:6px;border:1px solid #e8e8e8;">';
+    html += '<div style="font-weight:600;margin-bottom:6px;">二、维度组合校验 <span style="font-size:11px;color:#999;font-weight:400;">（匹配维度: ' + matchDims.join('、') + '）</span></div>';
+    html += '<div style="display:flex;gap:16px;font-size:13px;flex-wrap:wrap;">';
+    html += '<div><span class="stat-dot" style="background:#52c41a;display:inline-block;width:8px;height:8px;border-radius:50%;vertical-align:middle;margin-right:4px;"></span>维度匹配: ' + summary.matchedCombos + '条</div>';
+    if (summary.extraCombos > 0) {
+        html += '<div><span class="stat-dot" style="background:#cf1322;display:inline-block;width:8px;height:8px;border-radius:50%;vertical-align:middle;margin-right:4px;"></span>人工多报: ' + summary.extraCombos + '条</div>';
+    }
+    if (summary.missCombos > 0) {
+        html += '<div><span class="stat-dot" style="background:#096dd9;display:inline-block;width:8px;height:8px;border-radius:50%;vertical-align:middle;margin-right:4px;"></span>人工漏报: ' + summary.missCombos + '条</div>';
+    }
+    html += '</div></div>';
+
+    // ---- 第三层：字段级校验概览 ----
+    html += '<div style="margin-bottom:12px;padding:10px 14px;background:#fafafa;border-radius:6px;border:1px solid #e8e8e8;">';
+    html += '<div style="font-weight:600;margin-bottom:6px;">三、字段级校验</div>';
+    html += '<div style="display:flex;gap:16px;font-size:13px;flex-wrap:wrap;">';
+    if (summary.missingInManual && summary.missingInManual.length > 0) {
+        html += '<div style="color:#fa8c16;">人工遗漏字段: ' + summary.missingInManual.join('、') + '</div>';
+    }
+    if (summary.extraInManual && summary.extraInManual.length > 0) {
+        html += '<div style="color:#096dd9;">人工多报字段: ' + summary.extraInManual.join('、') + '</div>';
+    }
+    if (summary.commonColumns && summary.commonColumns.length > 0) {
+        html += '<div style="color:#52c41a;">共有字段: ' + summary.commonColumns.join('、') + '</div>';
+    }
+    html += '</div></div>';
+
+    summaryEl.innerHTML = html;
+
+    // ---- 字段级详情表格 ----
+    // 收集所有出现过的字段名
+    const allFieldNames = new Set();
+    details.forEach(function(d) {
+        Object.keys(d.fieldChecks || {}).forEach(function(k) { allFieldNames.add(k); });
+    });
+    const fieldList = Array.from(allFieldNames);
+
+    let tableHtml = '<thead><tr><th style="width:60px;">状态</th>';
+    // 先放维度列，再放其他字段
+    const dimCols = matchDims.filter(function(d) { return fieldList.includes(d); });
+    const otherCols = fieldList.filter(function(f) { return !matchDims.includes(f); });
+    const orderedCols = dimCols.concat(otherCols);
+    orderedCols.forEach(function(col) {
+        tableHtml += '<th>' + esc(col) + '</th>';
+    });
+    tableHtml += '</tr></thead><tbody>';
+
+    if (details.length === 0) {
+        tableHtml += '<tr><td colspan="' + (1 + orderedCols.length) + '" style="color:#bbb;padding:20px;">无校验结果</td></tr>';
+    } else {
+        details.forEach(function(d) {
+            const rowClass = d.rowStatus === 'matched' ? 'match-row' : (d.rowStatus === 'extra' ? 'extra-row' : 'miss-row');
+            tableHtml += '<tr class="' + rowClass + '">';
+
+            // 状态标签
+            if (d.rowStatus === 'matched') {
+                tableHtml += '<td><span class="match-value">✓</span></td>';
+            } else if (d.rowStatus === 'extra') {
+                tableHtml += '<td><span class="extra-tag">多报</span></td>';
+            } else {
+                tableHtml += '<td><span class="miss-tag">漏报</span></td>';
+            }
+
+            // 逐字段
+            orderedCols.forEach(function(col) {
+                const fc = (d.fieldChecks || {})[col];
+                if (!fc) {
+                    tableHtml += '<td style="color:#bbb;">-</td>';
+                    return;
+                }
+                const displayRow = d.manualRow || d.systemRow;
+                if (fc.status === 'missing_in_manual') {
+                    // 人工遗漏的字段：显示系统值，标红
+                    const sVal = fc.systemVal;
+                    const display = (typeof sVal === 'number') ? sVal.toLocaleString() : esc(String(sVal || ''));
+                    tableHtml += '<td style="background:#fff7e6;"><span style="color:#fa8c16;font-size:10px;">[缺]</span> ' + display + '</td>';
+                } else if (fc.status === 'extra_in_manual') {
+                    // 人工多报的字段：显示人工值，标蓝
+                    const mVal = fc.manualVal;
+                    const display = (typeof mVal === 'number') ? mVal.toLocaleString() : esc(String(mVal || ''));
+                    tableHtml += '<td style="background:#e6f7ff;"><span style="color:#096dd9;font-size:10px;">[多]</span> ' + display + '</td>';
+                } else if (fc.status === 'diff') {
+                    // 数值差异
+                    const sign = fc.diff > 0 ? '+' : '';
+                    const diffStr = fc.diffRate !== undefined ? (sign + fc.diff.toLocaleString() + ' (' + sign + fc.diffRate.toFixed(1) + '%)') : '';
+                    tableHtml += '<td style="background:#fff1f0;" title="人工: ' + fc.manualVal + ' / 系统: ' + fc.systemVal + '"><span class="diff-value">' + esc(String(fc.manualVal)) + '</span> <span style="font-size:10px;">→' + diffStr + '</span></td>';
+                } else {
+                    // 匹配
+                    const val = fc.manualVal !== undefined ? fc.manualVal : (displayRow ? displayRow[col] : '');
+                    const display = (typeof val === 'number') ? val.toLocaleString() : esc(String(val || ''));
+                    tableHtml += '<td>' + display + '</td>';
+                }
+            });
+            tableHtml += '</tr>';
+        });
+    }
+    tableHtml += '</tbody>';
+    document.getElementById('validateResultTable').innerHTML = tableHtml;
+    document.getElementById('validateResult').style.display = 'block';
+}
+
+init();
+</script>
+</body>
+</html>

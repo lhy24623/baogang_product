@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>自定义新产品</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; min-height: 100vh; }
+
+        .header { background: #fff; padding: 16px 24px; border-bottom: 1px solid #e8e8e8; display: flex; align-items: center; justify-content: space-between; }
+        .header h1 { font-size: 20px; color: #333; }
+        .header a { color: #667eea; text-decoration: none; font-size: 14px; }
+
+        .container { max-width: 1200px; margin: 20px auto; padding: 0 20px; }
+
+        .card { background: #fff; border-radius: 8px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+        .card-title { font-size: 15px; font-weight: 600; color: #333; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; position: relative; }
+        .card-title::before { content: ''; width: 3px; height: 16px; background: #667eea; border-radius: 2px; }
+
+        .form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+        .form-group { display: flex; flex-direction: column; gap: 4px; }
+        .form-group.full { grid-column: 1 / -1; }
+        .form-group label { font-size: 13px; color: #555; font-weight: 500; }
+        .form-group label .required { color: #dc2626; margin-left: 2px; }
+        .form-group label .hint { color: #bbb; font-weight: 400; font-size: 11px; }
+
+        .input-wrap { position: relative; }
+        .input-wrap select, .input-wrap input { width: 100%; padding: 8px 12px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 14px; }
+        .input-wrap select:focus, .input-wrap input:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 2px rgba(102,126,234,0.15); }
+        .input-wrap select { background: #fff; cursor: pointer; }
+
+        .combo { display: flex; gap: 0; }
+        .combo select { border-radius: 6px 0 0 6px; min-width: 0; flex: 1; }
+        .combo input { border-radius: 0 6px 6px 0; border-left: none; flex: 1; }
+        .combo select:focus { z-index: 1; }
+
+        .btn-row { display: flex; gap: 12px; margin-top: 24px; justify-content: center; }
+        .btn { padding: 10px 32px; border: none; border-radius: 6px; font-size: 15px; cursor: pointer; transition: all 0.2s; }
+        .btn-primary { background: #667eea; color: #fff; }
+        .btn-primary:hover { background: #5a6fd6; box-shadow: 0 4px 12px rgba(102,126,234,0.3); }
+        .btn-outline { background: #fff; color: #666; border: 1px solid #d9d9d9; }
+        .btn-outline:hover { color: #667eea; border-color: #667eea; }
+
+        .message { padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 14px; display: none; }
+        .message.error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; display: block; }
+        .message.success { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; display: block; }
+
+        .table-wrap { overflow-x: auto; max-height: 500px; overflow-y: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { background: #fafafa; padding: 10px 14px; text-align: left; font-weight: 600; color: #333; border-bottom: 2px solid #e8e8e8; white-space: nowrap; position: sticky; top: 0; z-index: 1; }
+        td { padding: 10px 14px; border-bottom: 1px solid #f0f0f0; color: #555; white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
+        tr:hover td { background: #f5f7ff; }
+        .pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; font-size: 13px; color: #888; }
+        .page-btns { display: flex; gap: 6px; }
+        .page-btn { padding: 4px 10px; border: 1px solid #d9d9d9; border-radius: 4px; background: #fff; cursor: pointer; font-size: 12px; color: #555; }
+        .page-btn:hover { color: #667eea; border-color: #667eea; }
+        .page-btn.active { background: #667eea; color: #fff; border-color: #667eea; }
+        .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .action-btn { padding: 4px 12px; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; transition: all 0.2s; margin-right: 4px; }
+        .btn-sync { background: #e6f7ff; color: #1890ff; border: 1px solid #91d5ff; }
+        .btn-sync:hover { background: #1890ff; color: #fff; }
+        .btn-sync:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-del { background: #fff1f0; color: #ff4d4f; border: 1px solid #ffa39e; }
+        .btn-del:hover { background: #ff4d4f; color: #fff; }
+        .btn-del:disabled { opacity: 0.5; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>自定义新产品</h1>
+        <div style="display:flex;gap:12px;align-items:center;">
+            <a href="/" style="color:#667eea;text-decoration:none;font-size:14px;">主页</a>
+            <a href="/product" style="color:#667eea;text-decoration:none;font-size:14px;">产品档案</a>
+            <a href="/production-sales" style="color:#52c41a;text-decoration:none;font-size:14px;">产销统计</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- 新增表单 -->
+        <div class="card">
+            <div class="card-title">新增自定义产品</div>
+            <div id="debugInfo" style="font-size:12px;color:#999;margin-bottom:8px;display:none;"></div>
+            <div id="msgArea" class="message"></div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>产品规范编码 <span class="required">*</span></label>
+                    <input id="f_psrno" placeholder="请输入产品规范编码">
+                </div>
+                <div class="form-group">
+                    <label>自定义产品标记</label>
+                    <div class="combo input-wrap">
+                        <select id="s_custom_mark"><option value="">-- 选择 --</option></select>
+                        <input id="f_custom_mark" placeholder="或自定义输入">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>产品大类编码</label>
+                    <div class="combo input-wrap">
+                        <select id="s_prodclass"><option value="">-- 选择 --</option></select>
+                        <input id="f_prodclass" placeholder="或自定义输入">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>产品大类中文名称</label>
+                    <div class="combo input-wrap">
+                        <select id="s_prodclasschin"><option value="">-- 选择 --</option></select>
+                        <input id="f_prodclasschin" placeholder="或自定义输入">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>产品形态编码</label>
+                    <div class="combo input-wrap">
+                        <select id="s_prodtype"><option value="">-- 选择 --</option></select>
+                        <input id="f_prodtype" placeholder="或自定义输入">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>产品形态中文名称</label>
+                    <div class="combo input-wrap">
+                        <select id="s_prodtypechin"><option value="">-- 选择 --</option></select>
+                        <input id="f_prodtypechin" placeholder="或自定义输入">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>制造标准编码</label>
+                    <div class="combo input-wrap">
+                        <select id="s_mscno"><option value="">-- 选择 --</option></select>
+                        <input id="f_mscno" placeholder="或自定义输入">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>用途码</label>
+                    <div class="combo input-wrap">
+                        <select id="s_apnno"><option value="">-- 选择 --</option></select>
+                        <input id="f_apnno" placeholder="或自定义输入">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>用途中文描述</label>
+                    <div class="combo input-wrap">
+                        <select id="s_apndesc"><option value="">-- 选择 --</option></select>
+                        <input id="f_apndesc" placeholder="或自定义输入">
+                    </div>
+                </div>
+                <div class="form-group full">
+                    <label>标准全名</label>
+                    <input id="f_standname" placeholder="请输入标准全名">
+                </div>
+            </div>
+            <div class="btn-row">
+                <button class="btn btn-primary" onclick="submitForm()">提交新增</button>
+                <button class="btn btn-outline" onclick="resetForm()">重置</button>
+            </div>
+        </div>
+
+        <!-- 已添加列表 -->
+        <div class="card">
+            <div class="card-title">已添加的自定义产品</div>
+            <button class="btn btn-primary btn-sm" style="position:absolute;right:24px;top:18px;" onclick="exportExcel()" id="exportBtn" disabled>导出Excel</button>
+            <div class="table-wrap" id="tableArea"><div style="text-align:center;padding:40px;color:#bbb;">加载中...</div></div>
+            <div class="pagination">
+                <div id="pageInfo"></div>
+                <div class="page-btns" id="pageBtns"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentPage = 1;
+        const pageSize = 20;
+        let totalRecords = 0;
+        let currentData = [];
+
+        // 下拉选择联动：选了下拉框就填到输入框，也可直接在输入框自定义
+        function setupCombo(selectId, inputId) {
+            document.getElementById(selectId).addEventListener('change', function() {
+                document.getElementById(inputId).value = this.value;
+            });
+        }
+        setupCombo('s_prodclass', 'f_prodclass');
+        setupCombo('s_prodclasschin', 'f_prodclasschin');
+        setupCombo('s_prodtype', 'f_prodtype');
+        setupCombo('s_prodtypechin', 'f_prodtypechin');
+        setupCombo('s_mscno', 'f_mscno');
+        setupCombo('s_apnno', 'f_apnno');
+        setupCombo('s_apndesc', 'f_apndesc');
+        setupCombo('s_custom_mark', 'f_custom_mark');
+
+        // 加载下拉选项
+        async function loadOptions() {
+            const debugEl = document.getElementById('debugInfo');
+            debugEl.style.display = 'block';
+            debugEl.textContent = '正在加载下拉选项...';
+            try {
+                const res = await fetch('/api/custom-product/options');
+                console.log('API响应状态:', res.status);
+                if (!res.ok) {
+                    debugEl.textContent = '❌ API请求失败: HTTP ' + res.status;
+                    debugEl.style.color = '#dc2626';
+                    return;
+                }
+                const json = await res.json();
+                console.log('API返回数据:', json);
+                if (!json.success) {
+                    debugEl.textContent = '❌ API返回失败: ' + (json.error || '未知错误');
+                    debugEl.style.color = '#dc2626';
+                    return;
+                }
+                const opts = json.options;
+                // 逐个填充并记录结果
+                const fields = ['prodclass','prodclasschin','prodtype','prodtypechin','mscno','apnno','apndesc','custom_mark'];
+                let statusParts = [];
+                fields.forEach(f => {
+                    const count = (opts[f] || []).length;
+                    statusParts.push(f + ':' + count);
+                    console.log(`字段 ${f}: ${count} 个选项`);
+                    fillSel('s_' + f, opts[f]);
+                });
+                debugEl.textContent = '✅ 下拉选项已加载: ' + statusParts.join(', ');
+                debugEl.style.color = '#16a34a';
+                console.log('所有下拉选项加载完成');
+            } catch (e) {
+                console.error('加载选项失败:', e);
+                debugEl.textContent = '❌ 加载失败: ' + e.message;
+                debugEl.style.color = '#dc2626';
+            }
+        }
+
+        function fillSel(id, values) {
+            const sel = document.getElementById(id);
+            sel.innerHTML = '<option value="">-- 选择 --</option>';
+            (values || []).forEach(v => {
+                if (v === null || v === undefined) return;
+                const opt = document.createElement('option');
+                opt.value = String(v);
+                opt.textContent = String(v);
+                sel.appendChild(opt);
+            });
+        }
+
+        // 提交新增
+        async function submitForm() {
+            const psrno = document.getElementById('f_psrno').value.trim();
+            if (!psrno) { showMsg('产品规范编码为必填项', 'error'); return; }
+
+            const body = { psrno: psrno };
+            // 下拉框+输入框组合字段：输入框优先
+            const comboFields = ['prodclass', 'prodclasschin', 'prodtype', 'prodtypechin', 'mscno', 'apnno', 'apndesc', 'custom_mark'];
+            comboFields.forEach(f => {
+                const val = document.getElementById('f_' + f).value.trim();
+                if (val) body[f] = val;
+            });
+            const standname = document.getElementById('f_standname').value.trim();
+            if (standname) body.standname = standname;
+
+            try {
+                const res = await fetch('/api/custom-product/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const json = await res.json();
+                if (json.success) {
+                    showMsg('新增成功！影响行数: ' + json.affected, 'success');
+                    resetForm();
+                    loadList(1);
+                } else {
+                    showMsg('新增失败: ' + json.error, 'error');
+                }
+            } catch (e) {
+                showMsg('请求失败: ' + e.message, 'error');
+            }
+        }
+
+        function resetForm() {
+            ['f_psrno','f_prodclass','f_prodclasschin','f_prodtype','f_prodtypechin','f_mscno','f_apnno','f_apndesc','f_standname','f_custom_mark',
+             's_prodclass','s_prodclasschin','s_prodtype','s_prodtypechin','s_mscno','s_apnno','s_apndesc','s_custom_mark'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+            document.getElementById('msgArea').style.display = 'none';
+        }
+
+        function showMsg(text, type) {
+            const el = document.getElementById('msgArea');
+            el.textContent = text;
+            el.className = 'message ' + type;
+            el.style.display = 'block';
+            if (type === 'success') setTimeout(() => { el.style.display = 'none'; }, 3000);
+        }
+
+        // 加载已添加列表
+        async function loadList(page) {
+            currentPage = page || 1;
+            try {
+                const res = await fetch('/api/custom-product/list', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ page: currentPage, pageSize: pageSize })
+                });
+                const json = await res.json();
+                if (json.success) {
+                    totalRecords = json.total;
+                    renderTable(json.data);
+                    renderPage();
+                } else {
+                    document.getElementById('tableArea').innerHTML = '<div style="text-align:center;padding:40px;color:#dc2626;">加载失败: ' + esc(json.error) + '</div>';
+                }
+            } catch (e) {
+                document.getElementById('tableArea').innerHTML = '<div style="text-align:center;padding:40px;color:#dc2626;">请求失败</div>';
+            }
+        }
+
+        function renderTable(data) {
+            currentData = data || [];
+            document.getElementById('exportBtn').disabled = !data || data.length === 0;
+            if (!data || !data.length) {
+                document.getElementById('tableArea').innerHTML = '<div style="text-align:center;padding:40px;color:#bbb;">暂无数据</div>';
+                document.getElementById('pageInfo').textContent = '';
+                document.getElementById('pageBtns').innerHTML = '';
+                return;
+            }
+            const cols = Object.keys(data[0]);
+            let html = '<table><thead><tr>';
+            cols.forEach(c => html += '<th>' + esc(c) + '</th>');
+            html += '<th>操作</th>';
+            html += '</tr></thead><tbody>';
+            data.forEach(row => {
+                html += '<tr>';
+                cols.forEach(c => {
+                    const v = row[c];
+                    html += '<td title="' + esc(String(v === null ? 'NULL' : v)) + '">' + (v === null ? '<span style="color:#bbb">NULL</span>' : esc(String(v))) + '</td>';
+                });
+                const psrno = row['psrno'] || '';
+                html += '<td style="white-space:nowrap;">';
+                html += '<button class="action-btn btn-sync" onclick="syncProduct(\'' + esc(String(psrno)) + '\', this)">同步到底表</button>';
+                html += '<button class="action-btn btn-del" onclick="deleteProduct(\'' + esc(String(psrno)) + '\', this)">删除</button>';
+                html += '</td>';
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            document.getElementById('tableArea').innerHTML = html;
+        }
+
+        function renderPage() {
+            const tp = Math.ceil(totalRecords / pageSize) || 1;
+            document.getElementById('pageInfo').textContent = '第 ' + currentPage + '/' + tp + ' 页，共 ' + totalRecords + ' 条';
+            let html = '<button class="page-btn"' + (currentPage<=1?' disabled':'') + ' onclick="loadList('+(currentPage-1)+')">上一页</button>';
+            for (let i = Math.max(1,currentPage-2); i <= Math.min(tp,currentPage+2); i++) {
+                html += '<button class="page-btn'+(i===currentPage?' active':'')+'" onclick="loadList('+i+')">'+i+'</button>';
+            }
+            html += '<button class="page-btn"' + (currentPage>=tp?' disabled':'') + ' onclick="loadList('+(currentPage+1)+')">下一页</button>';
+            document.getElementById('pageBtns').innerHTML = html;
+        }
+
+        // 同步自定义产品到产品基本信息底表
+        async function syncProduct(psrno, btnEl) {
+            if (!confirm('确认将 psrno=' + psrno + ' 的数据同步到产品基本信息底表？')) return;
+            btnEl.disabled = true;
+            btnEl.textContent = '同步中...';
+            try {
+                const res = await fetch('/api/custom-product/sync', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ psrno: psrno })
+                });
+                const json = await res.json();
+                if (json.success) {
+                    alert('同步成功！操作: ' + json.action + '，影响行数: ' + json.affected);
+                } else {
+                    alert('同步失败: ' + (json.error || '未知错误'));
+                }
+            } catch (e) {
+                alert('请求失败: ' + e.message);
+            } finally {
+                btnEl.disabled = false;
+                btnEl.textContent = '同步到底表';
+            }
+        }
+
+        // 删除自定义产品
+        async function deleteProduct(psrno, btnEl) {
+            if (!confirm('确认删除 psrno=' + psrno + ' 的自定义产品记录？此操作不可恢复！')) return;
+            btnEl.disabled = true;
+            btnEl.textContent = '删除中...';
+            try {
+                const res = await fetch('/api/custom-product/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ psrno: psrno })
+                });
+                const json = await res.json();
+                if (json.success) {
+                    showMsg('删除成功！psrno=' + psrno, 'success');
+                    loadList(currentPage);
+                } else {
+                    alert('删除失败: ' + (json.error || '未知错误'));
+                }
+            } catch (e) {
+                alert('请求失败: ' + e.message);
+            } finally {
+                btnEl.disabled = false;
+                btnEl.textContent = '删除';
+            }
+        }
+
+        function esc(t) { var d = document.createElement('div'); d.textContent = String(t); return d.innerHTML; }
+
+        // 导出Excel（全量数据）
+        async function exportExcel() {
+            if (totalRecords === 0) { alert('暂无数据可导出'); return; }
+            var btn = document.getElementById('exportBtn');
+            btn.disabled = true; btn.textContent = '导出中...';
+            try {
+                // 重新请求全量数据
+                const res = await fetch('/api/custom-product/list', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ page: 1, pageSize: 999999 })
+                });
+                const json = await res.json();
+                if (!json.success || !json.data || json.data.length === 0) { alert('获取全量数据失败'); return; }
+                const allData = json.data;
+                const cols = Object.keys(allData[0]);
+                const rows = allData.map(function(row) {
+                    return cols.map(function(c) { return row[c] === null ? '' : row[c]; });
+                });
+                const exportRes = await fetch('/api/export/excel', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        fileName: '自定义新产品',
+                        sheets: [{ sheetName: '自定义新产品', columns: cols, data: rows }]
+                    })
+                });
+                if (!exportRes.ok) { alert('导出失败'); return; }
+                const blob = await exportRes.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = '自定义新产品.xlsx';
+                document.body.appendChild(a); a.click();
+                document.body.removeChild(a); URL.revokeObjectURL(url);
+            } catch (e) { alert('导出失败: ' + e.message); }
+            finally { btn.disabled = false; btn.textContent = '导出Excel'; }
+        }
+
+        loadOptions();
+        loadList(1);
+    </script>
+</body>
+</html>
