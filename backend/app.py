@@ -452,11 +452,11 @@ PS_SELECT_DIMENSIONS = [col for col, _, ftype in PS_DIMENSIONS if ftype == 'sele
 
 # 时间聚合尺度配置: {尺度key: (SELECT/GROUP BY表达式, 显示名称)}
 TIME_GRANULARITY_MAP = {
-    'year': ("DATE_FORMAT(shipDate, '%%Y')", '统计年份'),
-    'quarter': ("CONCAT(DATE_FORMAT(shipDate, '%%Y'), '-Q', QUARTER(shipDate))", '统计季度'),
-    'month': ("DATE_FORMAT(shipDate, '%%Y-%%m')", '统计月份'),
-    'week': ("CONCAT(DATE_FORMAT(shipDate, '%%Y'), '-W', WEEK(shipDate))", '统计周'),
-    'day': ("DATE_FORMAT(shipDate, '%%Y-%%m-%%d')", '统计日期'),
+    'year': ("DATE_FORMAT(shipDate, '%Y')", '统计年份'),
+    'quarter': ("CONCAT(DATE_FORMAT(shipDate, '%Y'), '-Q', QUARTER(shipDate))", '统计季度'),
+    'month': ("DATE_FORMAT(shipDate, '%Y-%m')", '统计月份'),
+    'week': ("CONCAT(DATE_FORMAT(shipDate, '%Y'), '-W', WEEK(shipDate))", '统计周'),
+    'day': ("DATE_FORMAT(shipDate, '%Y-%m-%d')", '统计日期'),
 }
 
 # 统计指标配置: (指标key, SQL聚合表达式, 显示名称)
@@ -644,6 +644,372 @@ def production_sales_query():
         'sql': sql_data,
         'dimensionLabels': dimension_labels,
         'metricLabels': metric_labels
+    })
+
+
+# ==================== 产销数据可视化 ====================
+
+# 指标key → 显示名映射
+METRIC_LABEL_MAP = {key: label for key, _, label in PS_METRICS}
+
+
+@app.route('/api/production-sales/visualization', methods=['POST'])
+def production_sales_visualization():
+    """
+    产销数据可视化接口：生成6张固定业务图表
+    1. 出货重量趋势 - 总出货重量随维度变化
+    2. 货款金额趋势 - 台币货款总金额随维度变化
+    3. 各组出货重量占比 - 按分组维度的出货重量占比
+    4. 出货量与货款额 - 出货重量vs货款金额双轴对比
+    5. 订单数与货款额 - 订单数vs货款金额双轴对比(反映订单单价)
+    6. 各项费用占比 - 含税额+8项费用的占比饼图
+    """
+    data = request.get_json() or {}
+    filters = data.get('filters', {})
+    group_by = data.get('groupBy', [])
+    time_granularity = data.get('timeGranularity', 'month')
+    date_start = data.get('dateStart', '')
+    date_end = data.get('dateEnd', '')
+
+    if not date_start or not date_end:
+        return jsonify({'success': False, 'error': '请选择日期范围'}), 400
+    if not group_by:
+        return jsonify({'success': False, 'error': '请至少选择一个分组维度'}), 400
+
+    if time_granularity not in TIME_GRANULARITY_MAP:
+        time_granularity = 'month'
+    time_expr, time_label = TIME_GRANULARITY_MAP[time_granularity]
+
+    # 构建查询（复用query接口逻辑，获取全量数据）
+    inner_cols_pending = PS_INNER_COLUMNS + ", '待结算' AS settle_status"
+    inner_cols_settled = PS_INNER_COLUMNS + ", '已结算' AS settle_status"
+    base_query = f"SELECT {inner_cols_pending} FROM {PENDING_TABLE} UNION ALL SELECT {inner_cols_settled} FROM {SETTLED_TABLE}"
+
+    select_parts = []
+    for dim in group_by:
+        if dim == 'stat_period':
+            select_parts.append(f"{time_expr} AS `{time_label}`")
+        else:
+            label = next((l for c, l, _ in PS_DIMENSIONS if c == dim), dim)
+            select_parts.append(f"`{dim}` AS `{label}`")
+    for _, expr, label in PS_METRICS:
+        select_parts.append(f"{expr} AS `{label}`")
+
+    where_parts = [f"shipDate BETWEEN '{date_start}' AND '{date_end}'", "shipDate IS NOT NULL"]
+    for dim, val in filters.items():
+        if not val:
+            continue
+        if dim == 'settle_status':
+            where_parts.append(f"settle_status = '{val}'")
+        elif dim == 'specMark':
+            where_parts.append(f"specMark LIKE '%{val}%'")
+        else:
+            where_parts.append(f"`{dim}` = '{val}'")
+
+    group_by_parts = []
+    for dim in group_by:
+        if dim == 'stat_period':
+            group_by_parts.append(time_expr)
+        else:
+            group_by_parts.append(f"`{dim}`")
+
+    order_parts = []
+    if 'stat_period' in group_by:
+        order_parts.append(f'`{time_label}` ASC')
+    if 'settle_status' in group_by:
+        order_parts.append('settle_status DESC')
+
+    where_clause = ' AND '.join(where_parts)
+    sql = f"SELECT {', '.join(select_parts)} FROM ({base_query}) t_total WHERE {where_clause} GROUP BY {', '.join(group_by_parts)}"
+    if order_parts:
+        sql += f" ORDER BY {', '.join(order_parts)}"
+
+    success, result = db.execute(sql)
+    if not success:
+        return jsonify({'success': False, 'error': result, 'sql': sql}), 500
+    if not result or len(result) == 0:
+        return jsonify({'success': False, 'error': '查询结果为空，无法生成图表'}), 400
+
+    # ---- 分析维度结构 ----
+    has_time = 'stat_period' in group_by
+    cat_dims = [d for d in group_by if d != 'stat_period']
+    cat_dim_labels = []
+    for d in cat_dims:
+        label = next((l for c, l, _ in PS_DIMENSIONS if c == d), d)
+        cat_dim_labels.append(label)
+    has_settle = 'settle_status' in group_by
+
+    dimension_labels = []
+    for dim in group_by:
+        if dim == 'stat_period':
+            dimension_labels.append(time_label)
+        else:
+            label = next((l for c, l, _ in PS_DIMENSIONS if c == dim), dim)
+            dimension_labels.append(label)
+
+    # ---- 辅助函数 ----
+    def safe_num(val):
+        if val is None:
+            return 0
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return 0
+
+    def get_cat_key(row):
+        return ' / '.join(str(row.get(l, '') or '') for l in cat_dim_labels)
+
+    def get_time_val(row):
+        return str(row.get(time_label, '') or '')
+
+    # X轴标签（每行一个）
+    if has_time:
+        x_values = [get_time_val(row) for row in result]
+    else:
+        x_values = [get_cat_key(row) for row in result]
+
+    # 分类系列键（有时间+分类维度时）
+    MAX_SERIES = 12
+    if has_time and cat_dims:
+        all_keys = [get_cat_key(row) for row in result]
+        unique_keys = sorted(set(all_keys))
+        if len(unique_keys) > MAX_SERIES:
+            key_counts = {}
+            for k in all_keys:
+                key_counts[k] = key_counts.get(k, 0) + 1
+            unique_keys = sorted(key_counts, key=lambda x: key_counts[x], reverse=True)[:MAX_SERIES]
+        series_keys = unique_keys
+        time_values = sorted(set(get_time_val(row) for row in result))
+    else:
+        series_keys = None
+        time_values = None
+
+    # 构建单指标系列数据
+    def build_series(metric_label, chart_type='auto'):
+        actual_type = chart_type
+        if chart_type == 'auto':
+            actual_type = 'line' if has_time else 'bar'
+        if series_keys is None:
+            return [{
+                'name': metric_label,
+                'type': actual_type,
+                'data': [safe_num(row.get(metric_label, 0)) for row in result],
+                'smooth': True,
+            }]
+        data_map = {}
+        for row in result:
+            tv = get_time_val(row)
+            dk = get_cat_key(row)
+            if dk not in data_map:
+                data_map[dk] = {}
+            data_map[dk][tv] = safe_num(row.get(metric_label, 0))
+        series = []
+        for dk in series_keys:
+            s = {
+                'name': dk,
+                'type': actual_type,
+                'data': [data_map.get(dk, {}).get(tv, 0) for tv in time_values],
+            }
+            if actual_type == 'line':
+                s['smooth'] = True
+            series.append(s)
+        return series
+
+    charts = []
+
+    # ---- 图1: 出货趋势 ----
+    m_wet = '总出货重量'
+    if series_keys is not None:
+        s1 = build_series(m_wet, 'line')
+        opt = {
+            'tooltip': {'trigger': 'axis'},
+            'legend': {'data': series_keys, 'top': 30, 'type': 'scroll'},
+            'grid': {'left': '3%', 'right': '4%', 'bottom': '3%', 'containLabel': True},
+            'xAxis': {'type': 'category', 'data': time_values, 'boundaryGap': False},
+            'yAxis': {'type': 'value', 'name': '重量'},
+            'series': s1,
+        }
+    else:
+        s1 = build_series(m_wet)
+        opt = {
+            'tooltip': {'trigger': 'axis'},
+            'legend': {'data': [m_wet], 'top': 30},
+            'grid': {'left': '3%', 'right': '4%', 'bottom': '3%', 'containLabel': True},
+            'xAxis': {'type': 'category', 'data': x_values, 'boundaryGap': not has_time},
+            'yAxis': {'type': 'value', 'name': '重量'},
+            'series': s1,
+        }
+    charts.append({'chartType': 'line', 'title': '出货重量趋势', 'option': opt})
+
+    # ---- 图2: 金额趋势 ----
+    m_amt = '台币货款总金额'
+    if series_keys is not None:
+        s2 = build_series(m_amt, 'line')
+        opt = {
+            'tooltip': {'trigger': 'axis'},
+            'legend': {'data': series_keys, 'top': 30, 'type': 'scroll'},
+            'grid': {'left': '3%', 'right': '4%', 'bottom': '3%', 'containLabel': True},
+            'xAxis': {'type': 'category', 'data': time_values, 'boundaryGap': False},
+            'yAxis': {'type': 'value', 'name': '金额'},
+            'series': s2,
+        }
+    else:
+        s2 = build_series(m_amt)
+        opt = {
+            'tooltip': {'trigger': 'axis'},
+            'legend': {'data': [m_amt], 'top': 30},
+            'grid': {'left': '3%', 'right': '4%', 'bottom': '3%', 'containLabel': True},
+            'xAxis': {'type': 'category', 'data': x_values, 'boundaryGap': not has_time},
+            'yAxis': {'type': 'value', 'name': '金额'},
+            'series': s2,
+        }
+    charts.append({'chartType': 'line', 'title': '货款金额趋势', 'option': opt})
+
+    # ---- 图3: 各组出货重量占比 ----
+    pie_labels = cat_dim_labels if cat_dims else ([time_label] if has_time else [])
+    if pie_labels:
+        pie_data = []
+        for row in result:
+            dk = ' / '.join(str(row.get(l, '') or '') for l in pie_labels)
+            val = safe_num(row.get(m_wet, 0))
+            if val != 0:
+                pie_data.append({'name': dk, 'value': round(val, 2)})
+        if len(pie_data) > 8:
+            pie_data.sort(key=lambda x: x['value'], reverse=True)
+            other_val = sum(x['value'] for x in pie_data[8:])
+            pie_data = pie_data[:8]
+            if other_val > 0:
+                pie_data.append({'name': '其他', 'value': round(other_val, 2)})
+        if pie_data:
+            opt = {
+                'tooltip': {'trigger': 'item', 'formatter': '{b}: {c} ({d}%)'},
+                'legend': {'orient': 'vertical', 'left': 'left', 'top': 30, 'type': 'scroll'},
+                'series': [{
+                    'name': '出货重量',
+                    'type': 'pie',
+                    'radius': ['35%', '65%'],
+                    'center': ['55%', '55%'],
+                    'avoidLabelOverlap': True,
+                    'itemStyle': {'borderRadius': 6, 'borderColor': '#fff', 'borderWidth': 2},
+                    'label': {'show': True, 'formatter': '{b}\n{d}%'},
+                    'data': pie_data,
+                }],
+            }
+            charts.append({'chartType': 'pie', 'title': '各组出货重量占比', 'option': opt})
+
+    # ---- 图4: 量价关系 ----
+    if series_keys is not None:
+        s_wet = build_series(m_wet, 'bar')
+        s_amt = build_series(m_amt, 'line')
+        for s in s_amt:
+            s['yAxisIndex'] = 1
+        all_s = s_wet + s_amt
+        legend_data = [s['name'] for s in all_s]
+        opt = {
+            'tooltip': {'trigger': 'axis'},
+            'legend': {'data': legend_data, 'top': 30, 'type': 'scroll'},
+            'grid': {'left': '3%', 'right': '4%', 'bottom': '3%', 'containLabel': True},
+            'xAxis': {'type': 'category', 'data': time_values, 'boundaryGap': True},
+            'yAxis': [
+                {'type': 'value', 'name': '重量'},
+                {'type': 'value', 'name': '金额'},
+            ],
+            'series': all_s,
+        }
+    else:
+        wet_data = [safe_num(row.get(m_wet, 0)) for row in result]
+        amt_data = [safe_num(row.get(m_amt, 0)) for row in result]
+        all_s = [
+            {'name': m_wet, 'type': 'bar', 'data': wet_data, 'yAxisIndex': 0},
+            {'name': m_amt, 'type': 'line', 'data': amt_data, 'yAxisIndex': 1, 'smooth': True},
+        ]
+        opt = {
+            'tooltip': {'trigger': 'axis'},
+            'legend': {'data': [m_wet, m_amt], 'top': 30},
+            'grid': {'left': '3%', 'right': '4%', 'bottom': '3%', 'containLabel': True},
+            'xAxis': {'type': 'category', 'data': x_values},
+            'yAxis': [
+                {'type': 'value', 'name': '重量'},
+                {'type': 'value', 'name': '金额'},
+            ],
+            'series': all_s,
+        }
+    charts.append({'chartType': 'mixed', 'title': '出货量与货款额', 'option': opt})
+
+    # ---- 图5: 订单数与货款额 ----
+    m_order = '订单总数'
+    if series_keys is not None:
+        s_order = build_series(m_order, 'bar')
+        s_amt5 = build_series(m_amt, 'line')
+        for s in s_amt5:
+            s['yAxisIndex'] = 1
+        all_s5 = s_order + s_amt5
+        legend_data5 = [s['name'] for s in all_s5]
+        opt = {
+            'tooltip': {'trigger': 'axis'},
+            'legend': {'data': legend_data5, 'top': 30, 'type': 'scroll'},
+            'grid': {'left': '3%', 'right': '4%', 'bottom': '3%', 'containLabel': True},
+            'xAxis': {'type': 'category', 'data': time_values, 'boundaryGap': True},
+            'yAxis': [
+                {'type': 'value', 'name': '订单数'},
+                {'type': 'value', 'name': '金额'},
+            ],
+            'series': all_s5,
+        }
+    else:
+        order_data = [safe_num(row.get(m_order, 0)) for row in result]
+        amt_data5 = [safe_num(row.get(m_amt, 0)) for row in result]
+        all_s5 = [
+            {'name': m_order, 'type': 'bar', 'data': order_data, 'yAxisIndex': 0},
+            {'name': m_amt, 'type': 'line', 'data': amt_data5, 'yAxisIndex': 1, 'smooth': True},
+        ]
+        opt = {
+            'tooltip': {'trigger': 'axis'},
+            'legend': {'data': [m_order, m_amt], 'top': 30},
+            'grid': {'left': '3%', 'right': '4%', 'bottom': '3%', 'containLabel': True},
+            'xAxis': {'type': 'category', 'data': x_values},
+            'yAxis': [
+                {'type': 'value', 'name': '订单数'},
+                {'type': 'value', 'name': '金额'},
+            ],
+            'series': all_s5,
+        }
+    charts.append({'chartType': 'mixed', 'title': '订单数与货款额', 'option': opt})
+
+    # ---- 图6: 各项费用占比 ----
+    cost_metrics = ['总税额', '总运费', '总捆绑费', '总站港杂费', '总SS保费', '代收代付运费总额', '自备车租金总额', '预估海运费总额', '预估佣金总额']
+    cost_data = []
+    for cm in cost_metrics:
+        total = sum(safe_num(row.get(cm, 0)) for row in result)
+        cost_data.append({'name': cm, 'value': round(total, 2)})
+    if len(cost_data) > 10:
+        cost_data.sort(key=lambda x: x['value'], reverse=True)
+        other_val = sum(x['value'] for x in cost_data[10:])
+        cost_data = cost_data[:10]
+        if other_val > 0:
+            cost_data.append({'name': '其他', 'value': round(other_val, 2)})
+    opt = {
+        'tooltip': {'trigger': 'item', 'formatter': '{b}: {c} ({d}%)'},
+        'legend': {'orient': 'vertical', 'left': 'left', 'top': 30, 'type': 'scroll'},
+        'series': [{
+            'name': '费用构成',
+            'type': 'pie',
+            'radius': ['35%', '65%'],
+            'center': ['55%', '55%'],
+            'avoidLabelOverlap': True,
+            'itemStyle': {'borderRadius': 6, 'borderColor': '#fff', 'borderWidth': 2},
+            'label': {'show': True, 'formatter': '{b}\n{d}%'},
+            'data': cost_data,
+        }],
+    }
+    charts.append({'chartType': 'pie', 'title': '各项费用占比', 'option': opt})
+
+    return jsonify({
+        'success': True,
+        'charts': charts,
+        'dimensionLabels': dimension_labels,
+        'metricLabels': [label for _, _, label in PS_METRICS],
+        'dataCount': len(result),
     })
 
 
